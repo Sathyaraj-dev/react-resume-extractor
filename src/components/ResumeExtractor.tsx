@@ -12,12 +12,14 @@ type ParsedResume = {
 export default function ResumeExtractor(): JSX.Element {
   const [fileName, setFileName] = useState<string | null>(null);
   const [parsed, setParsed] = useState<ParsedResume | null>(null);
+  const [formData, setFormData] = useState<ParsedResume>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleFile(file: File) {
     setError(null);
     setParsed(null);
+    setFormData({});
     setLoading(true);
     setFileName(file.name);
 
@@ -25,6 +27,7 @@ export default function ResumeExtractor(): JSX.Element {
       const text = await extractTextFromFile(file);
       const p = parseResumeText(text);
       setParsed(p);
+      setFormData(p);
     } catch (err: any) {
       console.error(err);
       setError(err?.message || String(err));
@@ -39,9 +42,9 @@ export default function ResumeExtractor(): JSX.Element {
   }
 
   async function extractTextFromFile(file: File): Promise<string> {
-    const ext = file.name.split('.').pop()?.toLowerCase() || '';
+    const ext = file.name.split(".").pop()?.toLowerCase() || "";
 
-    if (ext === 'pdf') {
+    if (ext === "pdf") {
       try {
         const pdfjsLib = await import("pdfjs-dist");
         const pdfWorker = await import("pdfjs-dist/build/pdf.worker?url");
@@ -49,28 +52,28 @@ export default function ResumeExtractor(): JSX.Element {
 
         const arrayBuffer = await file.arrayBuffer();
         const pdf = await (pdfjsLib as any).getDocument({ data: arrayBuffer }).promise;
-        let fullText = '';
+        let fullText = "";
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);
           const content = await page.getTextContent();
-          const pageText = (content.items as any[]).map((it: any) => (it.str ? it.str : '')).join(' ');
+          const pageText = (content.items as any[])
+            .map((it: any) => (it.str ? it.str : ""))
+            .join(" ");
           fullText += `\n\n${pageText}`;
         }
         return fullText;
       } catch (e) {
-        console.warn('pdfjs not available or failed — returning fallback', e);
         return await file.text();
       }
     }
 
-    if (ext === 'docx') {
+    if (ext === "docx") {
       try {
-        const mammoth = await import('mammoth');
+        const mammoth = await import("mammoth");
         const arrayBuffer = await file.arrayBuffer();
         const result = await mammoth.extractRawText({ arrayBuffer });
         return result.value;
       } catch (e) {
-        console.warn('mammoth not available, falling back to text', e);
         return await file.text();
       }
     }
@@ -81,10 +84,10 @@ export default function ResumeExtractor(): JSX.Element {
   function parseResumeText(text: string): ParsedResume {
     const lines = text
       .split(/\r?\n/)
-      .map(l => l.trim())
+      .map((l) => l.trim())
       .filter(Boolean);
 
-    const joined = lines.join('\n');
+    const joined = lines.join("\n");
 
     const emailMatch = joined.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
     const phoneMatch = joined.match(/(\+?\d[\d \-().]{6,}\d)/);
@@ -103,7 +106,8 @@ export default function ResumeExtractor(): JSX.Element {
     }
 
     const skillKeywords = [
-      'react', 'reactjs', 'next.js', 'nextjs', 'typescript', 'javascript', 'html', 'css', 'scss', 'sass', 'redux', 'mobx', 'node', 'nodejs', 'graphql', 'rest', 'api', 'jest', 'testing', 'webpack', 'vite', 'storybook', 'tailwind', 'mui', 'material-ui', 'aws'
+      "react", "next.js", "typescript", "javascript", "html", "css",
+      "redux", "node", "graphql", "jest", "tailwind", "mui", "aws"
     ];
     const skillsFound = new Set<string>();
     const lower = joined.toLowerCase();
@@ -111,110 +115,117 @@ export default function ResumeExtractor(): JSX.Element {
       if (lower.includes(k)) skillsFound.add(k);
     }
 
-    let summary: string | undefined;
-    if (name) {
-      const idx = lines.findIndex(l => l === name);
-      if (idx >= 0) {
-        const next = lines.slice(idx + 1, idx + 4).join(' ');
-        summary = next;
-      }
-    } else if (lines.length > 0) {
-      summary = lines.slice(0, 3).join(' ');
-    }
-
-    const locMatch = joined.match(/\b([A-Za-z ]+,?\s*(?:[A-Za-z]{2,}|[A-Za-z]{2,} \d{5}))\b/);
-
     return {
       name,
       email: emailMatch ? emailMatch[0] : undefined,
       phone: phoneMatch ? phoneMatch[0].trim() : undefined,
-      location: locMatch ? locMatch[0] : undefined,
-      summary,
+      summary: lines.slice(1, 4).join(" "),
+      location: undefined,
       skills: Array.from(skillsFound),
     };
   }
 
+  function handleChange(field: keyof ParsedResume, value: any) {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+  }
+
   function downloadJSON() {
-    if (!parsed) return;
-    const blob = new Blob([JSON.stringify(parsed, null, 2)], { type: 'application/json' });
+    if (!formData) return;
+    const blob = new Blob([JSON.stringify(formData, null, 2)], {
+      type: "application/json",
+    });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
-    a.download = `${fileName || 'resume'}.parsed.json`;
+    a.download = `${fileName || "resume"}.parsed.json`;
     a.click();
     URL.revokeObjectURL(url);
   }
 
   return (
-    <div className="max-w-3xl mx-auto p-4">
-      <h1 className="text-2xl font-semibold mb-4">Resume Extractor (React + TypeScript)</h1>
+    <div className="max-w-4xl mx-auto p-6">
+      <h1 className="text-3xl font-bold mb-6 text-center text-gray-800">
+        📄 Resume Extractor
+      </h1>
 
-      <label className="block mb-4">
-        <span className="sr-only">Upload resume</span>
-        <input type="file" accept=".pdf,.docx,.txt,.md" onChange={onFileChange} />
-      </label>
+      <div className="bg-white shadow-lg rounded-xl p-6 border border-gray-200">
+        <label className="flex flex-col items-center px-4 py-6 bg-gray-50 text-gray-700 rounded-lg border-2 border-dashed cursor-pointer hover:bg-gray-100">
+          <span className="font-medium">Upload Resume (PDF/DOCX/TXT)</span>
+          <input type="file" className="hidden" accept=".pdf,.docx,.txt,.md" onChange={onFileChange} />
+        </label>
 
-      <div className="mb-4">
-        <div className="text-sm text-gray-600">Supported formats: PDF, DOCX (mammoth), plain text.</div>
+        {loading && <div className="text-blue-600 mt-4">⏳ Parsing resume...</div>}
+        {error && <div className="text-red-600 mt-4">⚠️ {error}</div>}
+
+        {parsed && (
+          <div className="mt-6 space-y-4">
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600 text-sm">{fileName}</span>
+              <button
+                onClick={downloadJSON}
+                className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Download JSON
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <InputField label="Name" value={formData.name} onChange={(v) => handleChange("name", v)} />
+              <InputField label="Email" value={formData.email} onChange={(v) => handleChange("email", v)} />
+              <InputField label="Phone" value={formData.phone} onChange={(v) => handleChange("phone", v)} />
+              <InputField label="Location" value={formData.location} onChange={(v) => handleChange("location", v)} />
+
+              <div className="md:col-span-2">
+                <Label>Summary</Label>
+                <textarea
+                  className="w-full border rounded-lg p-3 text-sm mt-1 focus:ring-2 focus:ring-blue-500"
+                  rows={4}
+                  value={formData.summary || ""}
+                  onChange={(e) => handleChange("summary", e.target.value)}
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <Label>Skills (comma separated)</Label>
+                <input
+                  type="text"
+                  className="w-full border rounded-lg p-3 text-sm mt-1 focus:ring-2 focus:ring-blue-500"
+                  value={formData.skills?.join(", ") || ""}
+                  onChange={(e) =>
+                    handleChange("skills", e.target.value.split(",").map((s) => s.trim()))
+                  }
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-
-      {loading && <div className="mb-4">Parsing... please wait ⏳</div>}
-      {error && <div className="mb-4 text-red-600">Error: {error}</div>}
-
-      {parsed && (
-        <div className="bg-white shadow rounded p-4">
-          <div className="flex items-start justify-between mb-2">
-            <div>
-              <div className="text-lg font-medium">Parsed Result</div>
-              <div className="text-sm text-gray-500">{fileName}</div>
-            </div>
-            <div className="space-x-2">
-              <button onClick={downloadJSON} className="px-3 py-1 border rounded">Download JSON</button>
-              <button onClick={() => navigator.clipboard?.writeText(JSON.stringify(parsed, null, 2))} className="px-3 py-1 border rounded">Copy</button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Field label="Name" value={parsed.name} />
-            <Field label="Email" value={parsed.email} />
-            <Field label="Phone" value={parsed.phone} />
-            <Field label="Location" value={parsed.location} />
-            <div className="md:col-span-2">
-              <Label>Summary</Label>
-              <pre className="whitespace-pre-wrap bg-gray-50 rounded p-2 text-sm">{parsed.summary || '—'}</pre>
-            </div>
-            <div className="md:col-span-2">
-              <Label>Skills</Label>
-              {parsed.skills && parsed.skills.length > 0 ? (
-                <div className="flex flex-wrap gap-5 mt-2">
-                  {parsed.skills.map(s => (
-                    <span key={s} className="px-2 py-1 border rounded text-sm">{s}</span>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-sm text-gray-500 mt-2">No skills detected</div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {!parsed && !loading && (
-        <div className="text-sm text-gray-500 mt-4">Upload a resume to extract basic fields like name, email, phone, skills and more.</div>
-      )}
     </div>
   );
 }
 
-function Field({ label, value }: { label: string; value?: string }) {
+function InputField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value?: string;
+  onChange: (v: string) => void;
+}) {
   return (
     <div>
       <Label>{label}</Label>
-      <div className="mt-1 text-sm">{value || '—'}</div>
+      <input
+        type="text"
+        className="w-full border rounded-lg p-3 text-sm mt-1 focus:ring-2 focus:ring-blue-500"
+        value={value || ""}
+        onChange={(e) => onChange(e.target.value)}
+      />
     </div>
   );
 }
 
 function Label({ children }: { children: React.ReactNode }) {
-  return <div className="text-xs font-semibold text-gray-600">{children}</div>;
+  return <div className="text-xs font-semibold text-gray-700 uppercase">{children}</div>;
 }
