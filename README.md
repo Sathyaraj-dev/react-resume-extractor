@@ -3,6 +3,8 @@
 A **React + TypeScript + TailwindCSS** application that extracts structured data (Name, Email, Phone, Skills, Summary) from resumes in **PDF, DOCX, TXT** formats.  
 It also allows you to **edit extracted data** and **download it as JSON** for further use.
 
+Check out the live demo here: [https://react-resume-extractor.vercel.app/](https://react-resume-extractor.vercel.app/)
+
 ---
 
 ## 🚀 Features
