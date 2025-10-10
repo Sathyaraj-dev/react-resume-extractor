@@ -53,19 +53,39 @@ export default function ResumeExtractor(): JSX.Element {
         const arrayBuffer = await file.arrayBuffer();
         const pdf = await (pdfjsLib as any).getDocument({ data: arrayBuffer }).promise;
         let fullText = "";
+
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);
           const content = await page.getTextContent();
-          const pageText = (content.items as any[])
-            .map((it: any) => (it.str ? it.str : ""))
-            .join(" ");
-          fullText += `\n\n${pageText}`;
+
+          // Group text items by line (improves accuracy for PDFs)
+          const lines: Record<number, string[]> = {};
+          for (const item of content.items as any[]) {
+            const y = Math.round(item.transform[5]); // y-position
+            if (!lines[y]) lines[y] = [];
+            lines[y].push(item.str);
+          }
+
+          // Sort by y descending (PDF top-to-bottom) and join
+          const sorted = Object.keys(lines)
+            .sort((a, b) => Number(b) - Number(a))
+            .map((y) => lines[Number(y)].join(" ").trim())
+            .join("\n");
+
+          fullText += `\n${sorted}`;
         }
-        return fullText;
+
+        // Clean up weird spacing
+        return fullText
+          .replace(/\s{2,}/g, " ")
+          .replace(/\n{2,}/g, "\n")
+          .trim();
       } catch (e) {
+        console.warn("PDF extraction fallback:", e);
         return await file.text();
       }
     }
+
 
     if (ext === "docx") {
       try {
@@ -92,22 +112,80 @@ export default function ResumeExtractor(): JSX.Element {
     const emailMatch = joined.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
     const phoneMatch = joined.match(/(\+?\d[\d \-().]{6,}\d)/);
 
+    // --------------------------------------------
+    // NAME DETECTION
+    // --------------------------------------------
     let name: string | undefined;
-    for (const l of lines.slice(0, 6)) {
+    const locationIndicators = /(address|location|street|city|country|po box|bahrain|dubai|abu dhabi|qatar|oman|india|riyadh|ksa)/i;
+
+    for (const l of lines.slice(0, 10)) {
       const low = l.toLowerCase();
       if (/^resume|curriculum vitae|cv|profile$/.test(low)) continue;
       if (emailMatch && l.includes(emailMatch[0])) continue;
       if (phoneMatch && l.includes(phoneMatch[0])) continue;
+      if (locationIndicators.test(low)) continue;
+
       const words = l.split(/\s+/);
-      if (words.length >= 1 && words.length <= 4 && /^[A-Za-z .'-]+$/.test(l)) {
-        name = l;
+      if (
+        words.length >= 2 &&
+        words.length <= 4 &&
+        /^[A-Z][a-zA-Z .'-]+$/.test(l) &&
+        l !== l.toUpperCase()
+      ) {
+        name = l.trim();
         break;
       }
     }
 
+    // --------------------------------------------
+    // LOCATION DETECTION (clean: remove email/phone)
+    // --------------------------------------------
+    let location: string | undefined;
+
+    const locationRegex =
+      /(Address|Location|Based in|Lives in|Resident of)[:\-]?\s*([A-Za-z ,]+)/i;
+    const locMatch = joined.match(locationRegex);
+
+    if (locMatch && locMatch[2]) {
+      location = locMatch[2].trim();
+    } else {
+      // Try to find a line that contains a country or city name
+      const cityRegex =
+        /\b(Manama|Bahrain|Dubai|Abu Dhabi|Sharjah|Riyadh|Jeddah|Dammam|Qatar|Oman|Kuwait|India|Chennai|Mumbai|Bangalore|Delhi|Hyderabad|Pune|USA|UK|Canada|Singapore)\b/i;
+      const lineMatch = lines.find((l) => cityRegex.test(l));
+      if (lineMatch) {
+        // Remove email & phone if present in the same line
+        let cleanLine = lineMatch;
+        if (emailMatch) cleanLine = cleanLine.replace(emailMatch[0], "");
+        if (phoneMatch) cleanLine = cleanLine.replace(phoneMatch[0], "");
+        cleanLine = cleanLine
+          .replace(/[,;|]+/g, ",") // normalize separators
+          .replace(/\s{2,}/g, " ") // remove double spaces
+          .trim();
+
+        // Keep only the part after the last email/phone occurrence
+        const placeMatch = cleanLine.match(/[A-Za-z ,]+$/);
+        location = placeMatch ? placeMatch[0].trim() : cleanLine;
+      }
+    }
+
+    // --------------------------------------------
+    // SKILLS DETECTION
+    // --------------------------------------------
     const skillKeywords = [
-      "react", "next.js", "typescript", "javascript", "html", "css",
-      "redux", "node", "graphql", "jest", "tailwind", "mui", "aws"
+      "react",
+      "next.js",
+      "typescript",
+      "javascript",
+      "html",
+      "css",
+      "redux",
+      "node",
+      "graphql",
+      "jest",
+      "tailwind",
+      "mui",
+      "aws",
     ];
     const skillsFound = new Set<string>();
     const lower = joined.toLowerCase();
@@ -115,15 +193,26 @@ export default function ResumeExtractor(): JSX.Element {
       if (lower.includes(k)) skillsFound.add(k);
     }
 
+    // --------------------------------------------
+    // SUMMARY
+    // --------------------------------------------
+    const nameIndex = name ? lines.findIndex((l) => l.includes(name!)) : 0;
+    const summary = lines.slice(nameIndex + 1, nameIndex + 4).join(" ");
+
+    // --------------------------------------------
+    // RETURN
+    // --------------------------------------------
     return {
       name,
       email: emailMatch ? emailMatch[0] : undefined,
       phone: phoneMatch ? phoneMatch[0].trim() : undefined,
-      summary: lines.slice(1, 4).join(" "),
-      location: undefined,
+      summary,
+      location,
       skills: Array.from(skillsFound),
     };
   }
+
+
 
   function handleChange(field: keyof ParsedResume, value: any) {
     setFormData((prev) => ({ ...prev, [field]: value }));
