@@ -233,7 +233,7 @@ export default function ResumeExtractor(): JSX.Element {
 
   return (
     <div className="max-w-4xl mx-auto p-6">
-      <h1 className="text-3xl font-bold mb-6 text-center text-gray-800">
+      <h1 className="text-3xl font-bold mb-6 text-center text-white">
         📄 Resume Extractor
       </h1>
 
@@ -252,7 +252,7 @@ export default function ResumeExtractor(): JSX.Element {
               <span className="text-gray-600 text-sm">{fileName}</span>
               <button
                 onClick={downloadJSON}
-                className="px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                className="px-4 py-2 text-sm font-medium !bg-blue-600 text-white rounded-lg hover:bg-blue-700"
               >
                 Download JSON
               </button>
